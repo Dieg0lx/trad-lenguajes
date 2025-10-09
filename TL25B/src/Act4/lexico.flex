@@ -62,6 +62,7 @@ continue { return simbolo(sym.CONTINUE, yytext()); }
 goto     { return simbolo(sym.GOTO, yytext()); }
 return   { return simbolo(sym.RETURN, yytext()); }
 yield    { return simbolo(sym.YIELD, yytext()); }
+class    { return simbolo(sym.CLASS, yytext()); }
 
 /* PALABRAS RESERVADAS DE C# - MODIFICADORES DE ACCESO */
 

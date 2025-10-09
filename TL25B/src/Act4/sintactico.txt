@@ -1,18 +1,32 @@
-int x;
-int y=0;
-byte z=9;
-int a,b,c,d=1;
-int x = -1;
-float variable = 0;
-bool activo = true;
-string cadena = "Hola Mundo";
-float punto = 3.14;
-int sum = 4+1;
-int mult = 3*1;
-int div = 3/1;
-int op = 1*3-4;
-
-int 5+3;
-int 4/5;
-4*6
-1-2;
+class Sistema {
+    int contador;
+    float promedio;
+    bool activo;
+    
+    void inicializar() {
+        int x = 0;
+    }
+    
+    int calcular(int a, int b, int c) {
+        int resultado = a + b;
+        
+        while (resultado > 0) {
+            int temp = resultado - 1;
+        }
+        
+        for (i = 0; i < 10; i = i + 1) {
+            int j;
+            if (j > 5) {
+                int k;
+            }
+        }
+    }
+    
+    string mensaje;
+    
+    void procesar() {
+        do {
+            int x;
+        } while (x < 100);
+    }
+}
