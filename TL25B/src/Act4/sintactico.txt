@@ -1,25 +1,5 @@
 int a;
-int b = 10;
-float c = 3.14;
-string saludo = "hola";
-bool activo = true;
-
-int d;
-d = 50;
-
-int e = 10 + 5;
-
-bool condicion = true;
-if (condicion) {
-    int f = 1;
-}
-
-int g = 0;
-while (g < 3) {
-    g = g + 1;
-}
-
-int h = 0;
-do {
-    h = h + 1;
-} while (h < 3);
+a = 5;
+float b;
+b = a;
+c = 10;

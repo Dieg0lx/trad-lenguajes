@@ -15,4 +15,11 @@ public class Simbolo {
         this.columna = columna;
         this.valor = null;
     }
+    
+    @Override
+public String toString() {
+    return String.format("Tipo: %-7s | Alcance: %-6s | Linea: %d | Columna: %d", 
+                         tipo, alcance, linea, columna);
+}
+
 }

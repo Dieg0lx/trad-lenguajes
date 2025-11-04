@@ -8,6 +8,7 @@ import java.util.List;
 parser code {:
     public TablaSimbolos tablaSimbolos = new TablaSimbolos();
     public List<String> erroresSemanticos = new ArrayList<>();
+    public String tipoSwitchActual = null;
 
     public void reportarErrorSemantico(String mensaje, Symbol info) {
         String error = "Error Semantico: " + mensaje + " en la linea " + (info.left) + ", columna " + (info.right) + ".";
@@ -52,7 +53,7 @@ terminal ASIGNACION;
 terminal IGUAL_A, DIFERENTE, MAYOR, MENOR, MAYOR_IGUAL, MENOR_IGUAL;
 terminal AND, OR, NOT;
 terminal LLAVE_APERTURA, LLAVE_CIERRE, PAREN_APERTURA, PAREN_CIERRE;
-terminal CORCHETE_APERTURA, CORCHETE_CIERRE, PUNTO_COMA, COMA, PUNTO;
+terminal CORCHETE_APERTURA, CORCHETE_CIERRE, PUNTO_COMA, COMA, PUNTO, DOS_PUNTOS;
 terminal IDENTIFICADOR;
 
 /* --- No Terminales --- */
@@ -60,8 +61,17 @@ non terminal String tipo_dato, expresion, valor, termino;
 non terminal ArrayList<VarInfo> dec_vars;
 non terminal VarInfo dec_var_item;
 non terminal sentencias, sentencia, dec_variables, declaracion_metodo;
+non terminal parametros;
 non terminal Object sentencia_if, sentencia_while, sentencia_do, sentencia_for, sentencia_switch;
-non terminal Object parametros, lista_parametros, parametro, cuerpo_clase, elemento_clase;
+non terminal Object asignacion;
+non terminal Object for_declaracion, for_init_opt, for_cond_opt, for_inc_opt;
+
+non terminal Object switch_body;
+non terminal Object switch_section_list;
+non terminal Object switch_section;
+non terminal Object switch_label_list;
+non terminal Object switch_label;
+non terminal Object parametros_opt, sentencias_opt;
 
 /* --- Precedencia --- */
 precedence left MAYOR, MENOR, IGUAL_A, MAYOR_IGUAL, MENOR_IGUAL, DIFERENTE;
@@ -82,191 +92,339 @@ sentencia::= dec_variables
            | sentencia_do
            | sentencia_for
            | sentencia_switch
+           | asignacion:a PUNTO_COMA
+           {:
+                VarInfo info = (VarInfo) a;  
+                Symbol id_sym = info.symbol;
+                String e = info.tipoExpr;
+                Simbolo s = parser.tablaSimbolos.buscar(id_sym.value.toString());
+                if (s == null) {
+                    parser.reportarErrorSemantico("La variable '" + id_sym.value + "' no ha sido declarada", id_sym);
+                } else if (!s.tipo.equals(e) && !e.equals("error_tipo")) {
+                    parser.reportarErrorSemantico("Tipos incompatibles. No se puede asignar " + e + " a la variable '" + id_sym.value + "' de tipo " + s.tipo, id_sym);
+                }
+           :}
+           | BREAK PUNTO_COMA
+           | IDENTIFICADOR:id PAREN_APERTURA PAREN_CIERRE PUNTO_COMA
+           {:
+                Symbol id_sym = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-3);
+                Simbolo s = parser.tablaSimbolos.buscar(id_sym.value.toString());
+                if (s == null) {
+                    parser.reportarErrorSemantico("La función '" + id_sym.value + "' no ha sido declarada", id_sym);
+                }
+           :}
            | declaracion_metodo
-           | IDENTIFICADOR ASIGNACION expresion PUNTO_COMA
-           {:
-               Symbol id_sym = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-3));
-               String e = (String) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1)).value;
-               Simbolo s = parser.tablaSimbolos.buscar(id_sym.value.toString());
-               if (s == null) {
-                   parser.reportarErrorSemantico("La variable '" + id_sym.value + "' no ha sido declarada", id_sym);
-               } else if (!s.tipo.equals(e) && e != "error_tipo") {
-                   parser.reportarErrorSemantico("Tipos incompatibles. No se puede asignar " + e + " a la variable '" + id_sym.value + "' de tipo " + s.tipo, id_sym);
-               }
-           :}
-           | IDENTIFICADOR PAREN_APERTURA PAREN_CIERRE PUNTO_COMA
-           {:
-               Symbol id_sym = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-3));
-               Simbolo s = parser.tablaSimbolos.buscar(id_sym.value.toString());
-               if (s == null) {
-                   parser.reportarErrorSemantico("La función '" + id_sym.value + "' no ha sido declarada", id_sym);
-               }
-           :}
            ;
 
-dec_variables::= tipo_dato:t dec_vars:lista_vars PUNTO_COMA
-                {:
+asignacion ::= IDENTIFICADOR:id ASIGNACION expresion:e
+{:
+    Symbol id_sym = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2);
+    String tipo_e = (String) e;
+    RESULT = new VarInfo(id_sym, tipo_e);
+:};
+
+tipo_dato ::=
+     INT       {: RESULT = "INT"; :}
+   | FLOAT     {: RESULT = "FLOAT"; :}
+   | DOUBLE    {: RESULT = "DOUBLE"; :}
+   | STRING    {: RESULT = "STRING"; :}
+   | BOOL      {: RESULT = "BOOL"; :}
+   | CHAR      {: RESULT = "CHAR"; :}
+   | LONG      {: RESULT = "LONG"; :}
+   | DECIMAL   {: RESULT = "DECIMAL"; :}
+   | SHORT     {: RESULT = "SHORT"; :}
+   | BYTE      {: RESULT = "BYTE"; :}
+   | VOID      {: RESULT = "VOID"; :}
+   ;
+
+
+for_declaracion ::= tipo_dato:t dec_vars:lista_vars
+                 {:
                     for (VarInfo info : lista_vars) {
                         String id = (String) info.symbol.value;
                         if (!parser.tablaSimbolos.insertar(id, t, info.symbol.left, info.symbol.right)) {
                             parser.reportarErrorSemantico("El identificador '" + id + "' ya fue declarado en este alcance", info.symbol);
                         }
                         if (info.tipoExpr != null) {
-                            if (!t.equals(info.tipoExpr) && info.tipoExpr != "error_tipo") {
+                            if (!t.equals(info.tipoExpr) && !info.tipoExpr.equals("error_tipo")) {
                                 parser.reportarErrorSemantico("Tipos incompatibles. No se puede asignar " + info.tipoExpr + " a la nueva variable '" + id + "' de tipo " + t, info.symbol);
                             }
                         }
                     }
-                :}
-                ;
+                    RESULT = lista_vars;
+                 :};
 
-dec_vars::= dec_var_item:item
+dec_variables::= for_declaracion PUNTO_COMA;
+dec_vars::=dec_var_item:item
            {:
-               ArrayList<VarInfo> lista = new ArrayList<>();
-               lista.add(item);
-               RESULT = lista;
+                ArrayList<VarInfo> lista = new ArrayList<>();
+                lista.add(item);
+                RESULT = lista;
            :}
            | dec_vars:lista_existente COMA dec_var_item:item
            {:
-               lista_existente.add(item);
-               RESULT = lista_existente;
+                lista_existente.add(item);
+                RESULT = lista_existente;
            :}
            ;
 
-dec_var_item::= IDENTIFICADOR
-               {:
-                   Symbol id_sym = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.peek());
-                   RESULT = new VarInfo(id_sym, null);
-               :}
-               | IDENTIFICADOR ASIGNACION expresion
-               {:
-                   Symbol id_sym = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2));
-                   String e = (String) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.peek()).value;
-                   RESULT = new VarInfo(id_sym, e);
-               :}
-               ;
+dec_var_item ::=
+    IDENTIFICADOR:id
+    {:
+        Symbol id_sym = (Symbol) CUP$Sintactico$stack.peek();
+        RESULT = new VarInfo(id_sym, null);
+    :}
+  | IDENTIFICADOR:id ASIGNACION expresion:e
+    {:
+        Symbol id_sym = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2);
+        String tipo_e = (String) e;
+        RESULT = new VarInfo(id_sym, tipo_e);
+    :};
 
-expresion::= expresion OPERADOR_SUMA termino
-            {:
-                String e1 = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2)).value;
-                String t = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.peek()).value;
-                if ((e1.equals("INT") || e1.equals("FLOAT")) && (t.equals("INT") || t.equals("FLOAT"))) {
-                    RESULT = e1.equals("FLOAT") || t.equals("FLOAT") ? "FLOAT" : "INT";
+expresion::= expresion:e1 OPERADOR_SUMA termino:t
+             {:
+                String tipo_e1 = (String)e1;
+                String tipo_t = (String)t;
+                Symbol op_symbol = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1); // Sigue usando la pila para obtener el Symbol del operador
+                
+                if ((tipo_e1.equals("INT") || tipo_e1.equals("FLOAT")) && (tipo_t.equals("INT") || tipo_t.equals("FLOAT"))) {
+                    RESULT = tipo_e1.equals("FLOAT") || tipo_t.equals("FLOAT") ? "FLOAT" : "INT";
                 } else {
-                    Symbol op_symbol = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1));
-                    parser.reportarErrorSemantico("Operacion de suma invalida entre los tipos " + e1 + " y " + t, op_symbol);
+                    parser.reportarErrorSemantico("Operacion de suma invalida entre los tipos " + tipo_e1 + " y " + tipo_t, op_symbol);
                     RESULT = "error_tipo";
                 }
-            :}
-           | expresion OPERADOR_RESTA termino
-            {:
-                String e1 = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2)).value;
-                String t = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.peek()).value;
-                if ((e1.equals("INT") || e1.equals("FLOAT")) && (t.equals("INT") || t.equals("FLOAT"))) {
-                    RESULT = e1.equals("FLOAT") || t.equals("FLOAT") ? "FLOAT" : "INT";
+             :}
+           | expresion:e1 OPERADOR_RESTA termino:t
+             {:
+                String tipo_e1 = (String)e1;
+                String tipo_t = (String)t;
+                Symbol op_symbol = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1);
+                
+                if ((tipo_e1.equals("INT") || tipo_e1.equals("FLOAT")) && (tipo_t.equals("INT") || tipo_t.equals("FLOAT"))) {
+                    RESULT = tipo_e1.equals("FLOAT") || tipo_t.equals("FLOAT") ? "FLOAT" : "INT";
                 } else {
-                    Symbol op_symbol = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1));
-                    parser.reportarErrorSemantico("Operacion de resta invalida entre los tipos " + e1 + " y " + t, op_symbol);
+                    parser.reportarErrorSemantico("Operacion de resta invalida entre los tipos " + tipo_e1 + " y " + tipo_t, op_symbol);
                     RESULT = "error_tipo";
                 }
-            :}
-           | expresion MENOR termino        {: RESULT = "BOOL"; :}
-           | expresion MAYOR termino        {: RESULT = "BOOL"; :}
-           | expresion IGUAL_A termino      {: RESULT = "BOOL"; :}
-           | expresion MENOR_IGUAL termino  {: RESULT = "BOOL"; :}
-           | expresion MAYOR_IGUAL termino  {: RESULT = "BOOL"; :}
-           | expresion DIFERENTE termino    {: RESULT = "BOOL"; :}
+             :}
+           | expresion MENOR termino         {: RESULT = "BOOL"; :}
+           | expresion MAYOR termino         {: RESULT = "BOOL"; :}
+           | expresion IGUAL_A termino       {: RESULT = "BOOL"; :}
+           | expresion MENOR_IGUAL termino   {: RESULT = "BOOL"; :}
+           | expresion MAYOR_IGUAL termino   {: RESULT = "BOOL"; :}
+           | expresion DIFERENTE termino     {: RESULT = "BOOL"; :}
            | termino:t
-            {: RESULT = t; :}
+             {: RESULT = t; :}
            ;
 
-termino::= termino OPERADOR_MULTIPLICACION valor
-            {:
-                String t1 = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2)).value;
-                String v = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.peek()).value;
-                if ((t1.equals("INT") || t1.equals("FLOAT")) && (v.equals("INT") || v.equals("FLOAT"))) {
-                    RESULT = t1.equals("FLOAT") || v.equals("FLOAT") ? "FLOAT" : "INT";
+termino::= termino:t1 OPERADOR_MULTIPLICACION valor:v
+           {:
+                String tipo_t1 = (String)t1;
+                String tipo_v = (String)v;
+                Symbol op_symbol = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1);
+                
+                if ((tipo_t1.equals("INT") || tipo_t1.equals("FLOAT")) && (tipo_v.equals("INT") || tipo_v.equals("FLOAT"))) {
+                    RESULT = tipo_t1.equals("FLOAT") || tipo_v.equals("FLOAT") ? "FLOAT" : "INT";
                 } else {
-                    Symbol op_symbol = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1));
-                    parser.reportarErrorSemantico("Operacion de multiplicacion invalida entre los tipos " + t1 + " y " + v, op_symbol);
+                    parser.reportarErrorSemantico("Operacion de multiplicacion invalida entre los tipos " + tipo_t1 + " y " + tipo_v, op_symbol);
                     RESULT = "error_tipo";
                 }
-            :}
-          | termino OPERADOR_DIVISION valor
-            {:
-                String t1 = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2)).value;
-                String v = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.peek()).value;
-                if ((t1.equals("INT") || t1.equals("FLOAT")) && (v.equals("INT") || v.equals("FLOAT"))) {
+           :}
+         | termino:t1 OPERADOR_DIVISION valor:v
+           {:
+                String tipo_t1 = (String)t1;
+                String tipo_v = (String)v;
+                Symbol op_symbol = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1);
+                
+                if ((tipo_t1.equals("INT") || tipo_t1.equals("FLOAT")) && (tipo_v.equals("INT") || tipo_v.equals("FLOAT"))) {
                     RESULT = "FLOAT";
                 } else {
-                    Symbol op_symbol = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-1));
-                    parser.reportarErrorSemantico("Operacion de division invalida entre los tipos " + t1 + " y " + v, op_symbol);
+                    parser.reportarErrorSemantico("Operacion de division invalida entre los tipos " + tipo_t1 + " y " + tipo_v, op_symbol);
                     RESULT = "error_tipo";
                 }
-            :}
-          | valor:v
-            {: RESULT = v; :}
-          ;
+           :}
+         | valor:v
+           {: RESULT = v; :}
+         ;
 
-valor::= VALOR_ENTERO {: RESULT = "INT"; :}
-       | VALOR_FLOTANTE {: RESULT = "FLOAT"; :}
-       | VALOR_CADENA {: RESULT = "STRING"; :}
-       | TRUE {: RESULT = "BOOL"; :}
-       | FALSE {: RESULT = "BOOL"; :}
-       | IDENTIFICADOR
-       {:
-           Symbol id_sym = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.peek());
-           Simbolo s = parser.tablaSimbolos.buscar(id_sym.value.toString());
-           if (s == null) {
-               parser.reportarErrorSemantico("Identificador '" + id_sym.value + "' no ha sido declarado", id_sym);
-               RESULT = "error_tipo";
-           } else {
-               RESULT = s.tipo;
-           }
-       :}
-       | PAREN_APERTURA expresion:e PAREN_CIERRE {: RESULT = e; :}
-       ;
+valor ::=
+     VALOR_ENTERO      {: RESULT = "INT"; :}
+   | VALOR_FLOTANTE    {: RESULT = "FLOAT"; :}
+   | VALOR_CADENA      {: RESULT = "STRING"; :}
+   | TRUE              {: RESULT = "BOOL"; :}
+   | FALSE             {: RESULT = "BOOL"; :}
+   | IDENTIFICADOR:id
+     {:
+          Symbol id_sym = (Symbol) CUP$Sintactico$stack.peek();
+          Simbolo s = parser.tablaSimbolos.buscar(id_sym.value.toString());
+          if (s == null) {
+              parser.reportarErrorSemantico("Identificador '" + id_sym.value + "' no ha sido declarado", id_sym);
+              RESULT = "error_tipo";
+          } else {
+              RESULT = s.tipo;
+          }
+      :}
+    | PAREN_APERTURA expresion:e PAREN_CIERRE {: RESULT = e; :}
+    ;
 
-tipo_dato::= BOOL {: RESULT = "BOOL"; :} | BYTE {: RESULT = "BYTE"; :} | CHAR {: RESULT = "CHAR"; :}
-           | DECIMAL {: RESULT = "DECIMAL"; :} | DOUBLE {: RESULT = "DOUBLE"; :} | FLOAT {: RESULT = "FLOAT"; :}
-           | INT {: RESULT = "INT"; :} | LONG {: RESULT = "LONG"; :} | OBJECT {: RESULT = "OBJECT"; :}
-           | SBYTE {: RESULT = "SBYTE"; :} | SHORT {: RESULT = "SHORT"; :} | STRING {: RESULT = "STRING"; :}
-           | UINT {: RESULT = "UINT"; :} | ULONG {: RESULT = "ULONG"; :} | USHORT {: RESULT = "USHORT"; :}
-           | VOID {: RESULT = "VOID"; :}
-           ;
+ sentencia_if::= IF PAREN_APERTURA expresion:e PAREN_CIERRE
+             {:
+                 String tipo = (String) e;
+                 if (!tipo.equals("BOOL") && !tipo.equals("error_tipo")) {
+                      Symbol sym_paren_cierre = (Symbol) CUP$Sintactico$stack.peek(); 
+                      parser.reportarErrorSemantico("La condición del 'if' debe ser de tipo BOOL, no " + tipo, sym_paren_cierre);
+                 }
+                 parser.tablaSimbolos.entrarAlcance();
+             :}
+             LLAVE_APERTURA sentencias LLAVE_CIERRE
+             {: parser.tablaSimbolos.salirAlcance(); :}
+             ;
 
-declaracion_metodo::= tipo_dato IDENTIFICADOR PAREN_APERTURA PAREN_CIERRE
-                   {:
-                       String t = (String)((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-3)).value;
-                       Symbol id_symbol = (Symbol) ((java_cup.runtime.Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2));
-                       parser.tablaSimbolos.insertar(id_symbol.value.toString(), t, id_symbol.left, id_symbol.right);
-                       parser.tablaSimbolos.entrarAlcance(); 
-                   :}
-                   LLAVE_APERTURA sentencias LLAVE_CIERRE
-                   {: parser.tablaSimbolos.salirAlcance(); :}
-                   ;
+sentencia_while::= WHILE PAREN_APERTURA expresion:e PAREN_CIERRE
+                 {:
+                      String tipo = (String) e;
+                      if (!tipo.equals("BOOL") && !tipo.equals("error_tipo")) {
+                          Symbol sym_paren_cierre = (Symbol) CUP$Sintactico$stack.peek();
+                          parser.reportarErrorSemantico("La condición del 'while' debe ser de tipo BOOL, no " + tipo, sym_paren_cierre);
+                      }
+                      parser.tablaSimbolos.entrarAlcance();
+                      :}
+                      LLAVE_APERTURA sentencias LLAVE_CIERRE
+                      {: parser.tablaSimbolos.salirAlcance(); :}
+                      ;
 
-sentencia_if::= IF PAREN_APERTURA expresion PAREN_CIERRE
-               {: parser.tablaSimbolos.entrarAlcance(); :}
-               LLAVE_APERTURA sentencias LLAVE_CIERRE
-               {: parser.tablaSimbolos.salirAlcance(); :}
+sentencia_do::= DO {: parser.tablaSimbolos.entrarAlcance(); :}
+             LLAVE_APERTURA sentencias LLAVE_CIERRE
+             {: parser.tablaSimbolos.salirAlcance(); :}
+             WHILE PAREN_APERTURA expresion:e PAREN_CIERRE
+             {:
+                 String tipo = (String) e;
+                 if (!tipo.equals("BOOL") && !tipo.equals("error_tipo")) {
+                      Symbol sym_paren_cierre = (Symbol) CUP$Sintactico$stack.peek();
+                      parser.reportarErrorSemantico("La condición del 'do-while' debe ser de tipo BOOL, no " + tipo, sym_paren_cierre);
+                 }
+             :}
+             PUNTO_COMA;
+
+for_init_opt::= for_declaracion:decl {: RESULT = decl; :}
+               | asignacion:asig {: RESULT = asig; :}
+               |                 {: RESULT = null; :}
                ;
 
-sentencia_while::= WHILE PAREN_APERTURA expresion PAREN_CIERRE
-                  {: parser.tablaSimbolos.entrarAlcance(); :}
-                  LLAVE_APERTURA sentencias LLAVE_CIERRE
-                  {: parser.tablaSimbolos.salirAlcance(); :}
-                  ;
-                  
-sentencia_do::= DO {: parser.tablaSimbolos.entrarAlcance(); :} LLAVE_APERTURA sentencias LLAVE_CIERRE {: parser.tablaSimbolos.salirAlcance(); :} WHILE PAREN_APERTURA expresion PAREN_CIERRE PUNTO_COMA;
+for_cond_opt::= expresion:e {: RESULT = e; :}
+               |             {: RESULT = "BOOL"; :}
+               ;
 
-sentencia_for::= FOR PAREN_APERTURA dec_var_item PUNTO_COMA expresion PUNTO_COMA dec_var_item PAREN_CIERRE
-                {: parser.tablaSimbolos.entrarAlcance(); :}
-                LLAVE_APERTURA sentencias LLAVE_CIERRE
-                {: parser.tablaSimbolos.salirAlcance(); :}
-                ;
+for_inc_opt::= asignacion:a {: RESULT = a; :}
+             |              {: RESULT = null; :}
+             ;
 
-sentencia_switch::= SWITCH PAREN_APERTURA expresion PAREN_CIERRE
-                   {: System.out.println("Sentencia Switch reconocida (sin analisis semantico aun)"); :}
-                   LLAVE_APERTURA LLAVE_CIERRE
-                   ;
+sentencia_for::= FOR
+    {: parser.tablaSimbolos.entrarAlcance(); :}
+    PAREN_APERTURA
+    for_init_opt:init
+    PUNTO_COMA
+    for_cond_opt:cond
+    PUNTO_COMA
+    for_inc_opt:inc
+    PAREN_CIERRE
+    LLAVE_APERTURA
+        sentencias
+    LLAVE_CIERRE
+    {:
+        if (cond != null && !cond.equals("BOOL") && !cond.equals("error_tipo")) {
+            Symbol sym_punto_coma = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-6);
+            parser.reportarErrorSemantico("La condición del bucle 'for' debe ser de tipo BOOL, no " + cond, sym_punto_coma);
+        }
+        parser.tablaSimbolos.salirAlcance();
+    :};
+
+sentencia_switch::= SWITCH PAREN_APERTURA expresion:e PAREN_CIERRE
+                     {:
+                          String tipo = (String) e;
+                          if (!tipo.equals("INT") && !tipo.equals("STRING") && !tipo.equals("CHAR") && !tipo.equals("error_tipo")) {
+                              Symbol sym_paren_cierre = (Symbol) CUP$Sintactico$stack.peek();
+                              parser.reportarErrorSemantico("El tipo " + tipo + " no es válido para una sentencia 'switch'", sym_paren_cierre);
+                              parser.tipoSwitchActual = "error_tipo";
+                          } else {
+                              parser.tipoSwitchActual = tipo;
+                          }
+                          parser.tablaSimbolos.entrarAlcance();
+                     :}
+                     LLAVE_APERTURA
+                     switch_body
+                     LLAVE_CIERRE
+                     {:
+                          parser.tablaSimbolos.salirAlcance();
+                          parser.tipoSwitchActual = null;
+                     :};
+
+/* --- GRAMÁTICA PARA EL CUERPO DEL SWITCH --- */
+
+switch_body ::=
+     switch_section_list
+   | /* vacío */
+   ;
+
+
+switch_section_list::= switch_section
+                     | switch_section_list switch_section
+                     ;
+
+switch_section::= switch_label_list sentencias
+                 ;
+
+switch_label_list::= switch_label
+                    | switch_label_list switch_label
+                    ;
+
+
+switch_label::= CASE valor:v DOS_PUNTOS
+                 {:
+                    String tipoCase = (String) v;
+                    if (parser.tipoSwitchActual != null && !parser.tipoSwitchActual.equals("error_tipo") && !tipoCase.equals("error_tipo")) {
+                        if (!parser.tipoSwitchActual.equals(tipoCase)) {
+                            Symbol sym_case = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-2); 
+                            parser.reportarErrorSemantico("Tipo de 'case' (" + tipoCase + ") incompatible con el tipo del 'switch' (" + parser.tipoSwitchActual + ")", sym_case);
+                        }
+                    }
+                 :}
+               | DEFAULT DOS_PUNTOS
+               ;
+
+declaracion_metodo ::= tipo_dato:ret IDENTIFICADOR:id PAREN_APERTURA parametros_opt PAREN_CIERRE
+                      {:
+                          Symbol symId = (Symbol) CUP$Sintactico$stack.elementAt(CUP$Sintactico$top-3);
+                          String nombreMetodo = symId.value.toString();
+
+                          if (!parser.tablaSimbolos.insertar(nombreMetodo, ret, symId.left, symId.right)) {
+                              parser.reportarErrorSemantico("El método '" + nombreMetodo + "' ya fue declarado", symId);
+                          }
+
+                          parser.tablaSimbolos.entrarAlcance();
+                      :}
+                      LLAVE_APERTURA
+                      sentencias_opt
+                      LLAVE_CIERRE
+                      {:
+                          parser.tablaSimbolos.salirAlcance();
+                      :}
+                      ;
+
+parametros_opt ::= parametros
+                 | /* vacío */ ;
+
+parametros ::= tipo_dato:tipo IDENTIFICADOR:id
+             {:
+                Symbol id_sym = (Symbol) CUP$Sintactico$stack.peek();
+                parser.tablaSimbolos.insertar(id_sym.value.toString(), tipo, id_sym.left, id_sym.right);
+             :}
+           | parametros COMA tipo_dato:tipo IDENTIFICADOR:id
+             {:
+                Symbol id_sym = (Symbol) CUP$Sintactico$stack.peek();
+                parser.tablaSimbolos.insertar(id_sym.value.toString(), tipo, id_sym.left, id_sym.right);
+             :}
+             ;
+
+sentencias_opt ::= sentencias
+                 | /* vacío */ ;

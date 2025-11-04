@@ -103,6 +103,7 @@ volatile { return simbolo(sym.VOLATILE, yytext()); }
 ";" { return simbolo(sym.PUNTO_COMA, yytext()); }
 "," { return simbolo(sym.COMA, yytext()); }
 "." { return simbolo(sym.PUNTO, yytext()); }
+":" { return simbolo(sym.DOS_PUNTOS, yytext()); }
 
 /* OPERADORES ARITMÉTICOS */
 

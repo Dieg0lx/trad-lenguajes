@@ -13,19 +13,43 @@ import java_cup.runtime.Symbol;
  */
 public class AnalizadorSintacticoJava {
     public static void main(String[] args) throws IOException {
-        Reader lector = new BufferedReader(new FileReader("src/Act4/sintactico.txt"));
-        Sintactico s = new Sintactico(new Lexico(lector));
-        
-//        String contenido= "byte  numero1;";
-//        JavaSintactico s = new JavaSintactico(new JavaLexico(new StringReader(contenido)));
+        String rutaArchivo = "src/Act4/sintactico.txt"; 
+        Sintactico s = null;
+
         try {
-            System.out.println(s.parse());
+            Reader lector = new BufferedReader(new FileReader(rutaArchivo));
+            
+            s = new Sintactico(new Lexico(lector));
+        
+            System.out.println("Iniciando analisis de: " + rutaArchivo);
+            
+            s.parse(); 
+   
+            System.out.println("\n--- Analisis finalizado ---");
             System.out.println("Analisis realizado correctamente");
+
+            s.tablaSimbolos.imprimir();
+
+            if (s.erroresSemanticos.isEmpty()) {
+                System.out.println("Analisis semantico completado sin errores.");
+            } else {
+                System.out.println("\nSE ENCONTRARON ERRORES SEMANTICOS:");
+                for (String err : s.erroresSemanticos) {
+                    System.err.println(err);
+                }
+            }
+
         } catch (Exception ex) {
-//            Symbol sym = s.getS();
-//          System.out.println("Error de sintaxis. Linea: " + (sym.right + 1) +
-//              " Columna: " + (sym.left + 1) + ", Texto: \"" + sym.value + "\"");
-        System.out.println(ex.getMessage());
+            System.err.println("Error fatal durante el analisis: " + ex.getMessage());
+            if (s != null) {
+                try {
+                     System.err.println("El error de sintaxis fue reportado por el parser.");
+                } catch (Exception e_inner) {
+                    System.err.println("Error al intentar recuperar el simbolo del error.");
+                }
+            }
+            ex.printStackTrace();
         }
     }
 }
+
